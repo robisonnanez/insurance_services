@@ -2,11 +2,15 @@ import api from '@/utils/axiosConfig';
 import { Card } from 'primereact/card';
 import { Toast } from 'primereact/toast';
 import ClientForm from '../clients/form';
+import { addLocale } from 'primereact/api';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { useForm } from '@inertiajs/react';
+import { Column } from 'primereact/column';
 import { Calendar } from 'primereact/calendar';
 import { InputText } from 'primereact/inputtext';
+import { DataTable } from 'primereact/datatable';
+import { store } from '@/routes/cashreceipts/index';
 import { useEffect, useState, useRef } from 'react';
 import { storeClient } from '@/routes/clients/index';
 import { AutoComplete } from 'primereact/autocomplete';
@@ -46,16 +50,44 @@ interface Services {
   price?: number | null;
 }
 
+interface CashReceipt {
+  id?: number | null;
+  client_id: number | null;
+  date: string | null;
+  total: number | null;
+  details?: CashReceiptDetails[];
+}
+
+interface CashReceiptDetails {
+  id?: number | null;
+  it: number | null;
+  service_id: number | null;
+  description: string | null;
+  price: number | null;
+}
+
 export default function Cashreceipts({ companie }: { companie?: Companie | null }) {
-  const [fecha, setFecha] = useState<Date | null>(new Date());
   const [clients, setClients] = useState<Clients[]>([]);
   const [client, setClient] = useState<Clients | null>(null);
   const [filteredClients, setFilteredClients] = useState<Clients[]>([]);
   const [showCrearCliente, setShowCrearCliente] = useState<boolean>(false);
   const toastMessage = useRef<Toast | null>(null);
   const [service, setService] = useState<Services | null>(null);
+  const [servicePriceInput, setServicePriceInput] = useState<string>('');
   const [filteredServices, setFilteredServices] = useState<Services[]>([]);
   const [listServices, setListServices] = useState<Services[]>([]);
+  const [activeButtonSave, setActiveButtonSave] = useState<boolean>(false);
+
+  addLocale('es', {
+    firstDayOfWeek: 1,
+    dayNames: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+    dayNamesShort: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
+    dayNamesMin: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
+    monthNames: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+    monthNamesShort: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+    today: 'Hoy',
+    clear: 'Limpiar'
+  });
 
   const {
     data: dataFormClient,
@@ -86,8 +118,15 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     errors: errorsFormCashReceipt,
     setError: setErrorFormCashReceipt,
     reset: resetFormCashReceipt
-  } = useForm({});
+  } = useForm<Required<CashReceipt>>({
+    id: null,
+    client_id: null,
+    date: new Date().toISOString().split('T')[0],
+    total: null,
+    details: [],
+  });
 
+  // Initial data fetch
   useEffect(() => {
     getClients().then((data) => {
       if (data == null) return;
@@ -131,6 +170,7 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     }
   }
 
+  // Search clients for autocomplete
   const sarchClients = (e: any) => {
     const q = (e.query || '').toLowerCase();
     const results = clients.filter(c =>
@@ -167,6 +207,7 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
         const createdClient: Clients = response.data.data;
         showMessage('success', 'Éxito', response.data.message);
         setClient(createdClient);
+        setDataFormCashReceipt('client_id', createdClient?.id ?? null);
         setClients(prev => [...prev, createdClient]);
         setShowCrearCliente(false);
       })
@@ -194,7 +235,17 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
 
   const agregarServicio = () => {
     if (!service) return;
-    setListServices(prev => [...prev, service]);
+    const newDetails: CashReceiptDetails = {
+      it: (dataFormCashReceipt.details ? dataFormCashReceipt.details.length + 1 : 1),
+      service_id: service.id || null,
+      description: service.name || null,
+      price: service.price || 0,
+    };
+    const updatedDetails = [...(dataFormCashReceipt.details || []), newDetails];
+    const newTotal = updatedDetails.reduce((sum, item) => sum + (item.price || 0), 0);
+    setDataFormCashReceipt('details', updatedDetails);
+    setDataFormCashReceipt('total', newTotal);
+    setActiveButtonSave(true);
     setService(null);
     setFilteredServices([]);
   };
@@ -206,12 +257,73 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     );
   };
 
+  // Funciones para parsear/formatar moneda (miles con punto y decimales con coma)
+  const parseCurrency = (raw: string): number | null => {
+    if (!raw) return null;
+    // quitar todos los puntos de miles y convertir coma decimal a punto
+    const cleaned = raw.replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    if (cleaned === '') return null;
+    const num = Number(cleaned);
+    if (isNaN(num)) return null;
+    return Math.round(num * 100) / 100;
+  };
+
+  const formatCurrency = (value: number | string | null) => {
+    if (value == null) return '';
+    // Acepta número o string, limpia y convierte a número seguro
+    const asString = String(value);
+    const cleaned = asString.replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    const num = Number(cleaned);
+    if (isNaN(num)) return '';
+    const rounded = Math.round(num * 100) / 100;
+    const parts = rounded.toFixed(2).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return parts.join(',');
+  };
+
+  const formatInlineThousands = (raw: string) => {
+    if (!raw) return '';
+    // Si hay coma la tratamos como separador decimal: preservamos la parte decimal tal cual
+    if (raw.includes(',')) {
+      const lastCommaIndex = raw.lastIndexOf(',');
+      const intPartRaw = raw.slice(0, lastCommaIndex);
+      const decimalPart = raw.slice(lastCommaIndex + 1).replace(/\D/g, '');
+      const intDigits = intPartRaw.replace(/\D/g, '') || '0';
+      const formattedInt = intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      return decimalPart ? `${formattedInt},${decimalPart}` : formattedInt;
+    }
+
+    // Si no hay coma, tratamos todo como parte entera (los puntos son ignorados y se reinsertan según miles)
+    const digitsOnly = raw.replace(/\D/g, '') || '0';
+    const formatted = digitsOnly.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return formatted;
+  };
+
+  // Mantener el campo de texto del precio sincronizado cuando cambia el servicio
+  useEffect(() => {
+    setServicePriceInput(service?.price != null ? formatCurrency(service.price) : '');
+  }, [service?.price, service?.id]);
+
+  const handleSaveCashReceipt = () => {
+    postFormCashReceipt(store.url(), {
+      onSuccess: (response) => {
+        showMessage('success', 'Éxito', 'Recibo de caja creado correctamente.');
+        // Resetear formulario
+        resetFormCashReceipt();
+        setClient(null);
+        setActiveButtonSave(false);
+      },
+      onError: (errors) => {
+        console.error('Error saving cash receipt:', errors);
+        showMessage('error', 'Error', 'Hubo un error al crear el recibo de caja.');
+      },
+    });  
+  };
+
   return (
     <>
       <Toast ref={toastMessage} />
-      {/* <div className="p-6 bg-gray-100 min-h-screen grid place-items-center"> */}
       <div className="p-6 bg-gray-100 grid place-items-center">
-        {/* <Card className="w-full max-w-4xl p-6 shadow-2xl border rounded-xl bg-white"> */}
         <Card className="w-full max-w-full p-6 shadow-2xl border rounded-xl bg-white">
           {/* ENCABEZADO */}
           <div className="flex justify-between items-start border-b pb-4">
@@ -235,32 +347,37 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
             <div>
               <p><strong>Fecha:</strong></p>
               <Calendar 
-                value={fecha} 
-                onChange={(e: any) => setFecha(e.value)} 
+                value={dataFormCashReceipt.date ? new Date(dataFormCashReceipt.date) : null} 
+                onChange={(e: any) => setDataFormCashReceipt('date',e.value)} 
                 dateFormat="dd MM yy" 
                 className="w-full"  
                 inputClassName="p-inputtext-sm"
+                locale="es"
               />
               <p className="mt-2"><strong>Recibí de:</strong></p>
-              <InputText
-                value={client?.fullname ?? '---'}
-                className='w-full p-inputtext-sm'
-                size={14}
-                // disabled={client?.fullName != null ? false : true}
-                disabled={true}
+              <AutoComplete
+                value={client?.fullname ?? ''}
+                suggestions={filteredClients}
+                completeMethod={sarchClients}
+                className='flex-1 w-full p-inputtext-sm'
+                inputClassName='w-full p-inputtext-sm'
+                field="fullname"
+                onChange={(e) => setClientField('fullname', e.value)}
+                onSelect={(e) => { setClient(e.value); setDataFormCashReceipt('client_id', e.value?.id ?? null); }}
+                placeholder="Escriba nombre"
               />
               <p className="mt-2"><strong>Cédula:</strong></p>
               <div className="flex items-center gap-2">
                 <AutoComplete
-                  value={client}
+                  value={client?.document ?? ''}
                   suggestions={filteredClients}
                   completeMethod={sarchClients}
                   className='flex-1'
                   inputClassName='w-full p-inputtext-sm'
                   field="document"
-                  onChange={(e) => setClient(e.value)}
-                  onSelect={(e) => { setClient(e.value); }}
-                  placeholder="Escriba nombre o cédula..."
+                  onChange={(e) => setClientField('document', e.value)}
+                  onSelect={(e) => { setClient(e.value); setDataFormCashReceipt('client_id', e.value?.id ?? null); }}
+                  placeholder="Escriba la cédula"
                 />
                 {filteredClients.length === 0 && (
                   <Button 
@@ -281,7 +398,6 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
                 value={client?.address ?? '---'}
                 className='w-full p-inputtext-sm'
                 size={14}
-                // disabled={client?.address != null ? false : true}
                 disabled={true}
               />
 
@@ -290,7 +406,6 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
                 value={client?.cellphone ?? '---'}
                 className='w-full p-inputtext-sm'
                 size={14}
-                // disabled={client?.cellphone != null ? false : true}
                 disabled={true}
               />
             </div>
@@ -323,12 +438,27 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
               </div>
               <div className='col-span-12 sm:col-span-12 md:col-span-2 lg:col-span-2 xl:col-span-2 2xl:col-span-2'>
                 <InputText
-                  type="number"
-                  value={service?.price != null ? String(service.price) : ''}
-                  onChange={(e) => setService({ ...service, price: e.target.value === '' ? null : Number(e.target.value) })}
+                  value={servicePriceInput}
+                  onChange={(e) => {
+                    const raw = e.target.value || '';
+                    // permitir solo dígitos, punto y coma como separador decimal, eliminar signo negativo
+                    const sanitized = raw.replace(/[^0-9,\.]/g, '');
+                    // Si pasa de 2500, formatear inline separador de miles, sin forzar centavos
+                    const parsed = parseCurrency(sanitized);
+                    if (parsed != null && parsed >= 2500) {
+                      setServicePriceInput(formatInlineThousands(sanitized));
+                    } else {
+                      setServicePriceInput(sanitized);
+                    }
+                    // No setear el precio numérico hasta onBlur para no interrumpir la escritura
+                  }}
+                  onBlur={() => {
+                    const parsed = parseCurrency(servicePriceInput);
+                    setService({ ...service, price: parsed });
+                    setServicePriceInput(formatCurrency(parsed));
+                  }}
                   placeholder="Valor"
                   className="w-full text-right p-inputtext-sm"
-                  keyfilter="money"
                 />
               </div>
               <div className='col-span-12 sm:col-span-12 md:col-span-2 lg:col-span-2 xl:col-span-2 2xl:col-span-2'>
@@ -348,19 +478,35 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
           {/* SUMA */}
           <div className="mt-10 text-center">
             <p className="font-semibold">La suma de:</p>
-            {/* <p className="text-3xl font-bold">${valorTotal.toLocaleString('es-CO')}</p> */}
+            <p className="text-3xl font-bold">${dataFormCashReceipt.total?.toLocaleString('es-CO')}</p>
           </div>
 
           {/* DETALLES */}
           <div className="mt-10 border-t pt-4">
-
+            <DataTable 
+              value={dataFormCashReceipt.details} 
+              className="w-full"
+              size="small"
+              responsiveLayout="scroll"
+              emptyMessage={<div className="text-center">No hay servicios agregados.</div>}
+            > 
+              <Column field="it" header="It" />
+              <Column field="description" header="Descripción" />
+              <Column 
+                field="price" 
+                header="Valor" 
+                body={(rowData) => (
+                  <div className="text-right">
+                    ${rowData.price?.toLocaleString('es-CO')}
+                  </div>
+                )}
+              />
+            </DataTable>
             {/* Totales */}
             <div className="flex justify-end mt-4 text-lg font-bold">
               <div className="text-right">
-                {/* <p>Subtotal: {valorTotal.toLocaleString('es-CO')}</p> */}
-                <p>Subtotal: </p>
-                {/* <p>Total: {valorTotal.toLocaleString('es-CO')}</p> */}
-                <p>Total: </p>
+                <p>Subtotal: ${dataFormCashReceipt.total?.toLocaleString('es-CO')}</p>
+                <p>Total: ${dataFormCashReceipt.total?.toLocaleString('es-CO')}</p>
               </div>
             </div>
           </div>
@@ -382,6 +528,8 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
               size="small"
               text
               raised
+              disabled={!activeButtonSave}
+              onClick={handleSaveCashReceipt}
             />
           </div>
         </Card>

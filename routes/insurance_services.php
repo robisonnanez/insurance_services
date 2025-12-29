@@ -10,6 +10,7 @@ Route::middleware('auth')->group(function () {
   Route::prefix('insurance-services')->group(function () {
     Route::prefix('cashreceipts')->group(function () {
       Route::get('/', [CashreceiptsController::class, 'index'])->name('cashreceipts.index');
+      Route::post('/store', [CashreceiptsController::class, 'store'])->name('cashreceipts.store');
     });
     Route::prefix('companies')->group(function () {
       Route::get('/all', [CompaniesController::class, 'getAllCompanies'])->name('companies.all');
