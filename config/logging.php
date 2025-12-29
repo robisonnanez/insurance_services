@@ -127,6 +127,12 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'errores_personalizado' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/InsuranceServices.log'),
+            'level' => 'error',
+        ],
+
     ],
 
 ];

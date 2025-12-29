@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use DB;
+use Exception;
 use Illuminate\Http\Request;
+use App\Models\Cashreceiptdetail;
+use Illuminate\Support\Facades\Log;
 
 class CashreceiptdetailsController extends Controller
 {
@@ -27,7 +31,27 @@ class CashreceiptdetailsController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        DB::beginTransaction();
+        try {
+            $cashreceiptdetail = Cashreceiptdetail::create([
+                'cashreceipts_id' => $request->cashreceipts_id,
+                'services_id'     => $request->service_id,
+                'name'            => $request->description,
+                'price'           => $request->price
+            ]);
+
+            DB::commit();
+            return response()->json(['message' => 'Cash receipt detail created successfully', 'data' => $cashreceiptdetail, 'success' => true], 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::channel('errores_personalizado')->error('Error creating cash receipt detail: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+            return response()->json(['message' => 'Failed to create cash receipt detail', 'success' => false], 500);
+        }
     }
 
     /**

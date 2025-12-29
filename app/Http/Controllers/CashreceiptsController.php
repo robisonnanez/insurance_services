@@ -2,12 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use DB;
+use Exception;
 use Inertia\Inertia;
+use App\Models\Cashreceipt;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\CashreceiptdetailsController;
 
 class CashreceiptsController extends Controller
 {
+
+    protected $cashreceiptdetails;
+
+    public function __construct()
+    {
+        $this->cashreceiptdetails = new CashreceiptdetailsController();
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -40,7 +53,68 @@ class CashreceiptsController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        DB::beginTransaction();
+        try {
+            // Generar número de documento
+            $numberdocument = $this->generateNumberDocument();
+
+            $cashreceipt = Cashreceipt::create([
+                'clients_id'     => $request->client_id,
+                'numberdocument' => $numberdocument,
+                'date'           => $request->date,
+                'hour'           => date("H:i:s"),
+                'total'          => $request->total,
+            ]);
+
+            // Obtener id
+            $id = $cashreceipt->id; // o $cashreceipt->getKey()
+
+            // Crear detalles dentro de la misma transacción
+            if (!is_array($request->details) || count($request->details) === 0) {
+                throw new Exception('No se proporcionaron detalles válidos para el recibo', 422);
+            }
+
+            foreach ($request->details as $key => $value) {                
+                $details = array(
+                    "cashreceipts_id" => (int) $id,
+                    "service_id" => $value['service_id'],
+                    "description" => $value['description'],
+                    "price" => $value['price'],
+                );
+                $cashreceiptdetails = $this->cashreceiptdetails->store(new Request((array)$details));
+                
+                if ($cashreceiptdetails->getStatusCode() !== 201) {
+                    throw new Exception('Error al crear el detalle del recibo de caja en la posición ' . $key, 500);
+                }
+            }
+
+            // Commit sólo si todos los detalles se crearon correctamente
+            DB::commit();
+
+            return redirect()->route('cashreceipts.index')
+                ->with('message', 'Recibo de caja creado exitosamente')
+                ->with('success', true);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::channel('errores_personalizado')->error('Error: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+
+
+            if ($e->getCode() === 422) {
+                return redirect()->back()
+                    ->withErrors(['details' => $e->getMessage()])
+                    ->with('message', $e->getMessage())
+                    ->with('success', false);
+            }
+
+            return redirect()->back()
+                ->with('message', 'Error al crear el recibo de caja: ' . $e->getMessage())
+                ->with('success', false);
+        }
     }
 
     /**
@@ -73,5 +147,29 @@ class CashreceiptsController extends Controller
     public function destroy(string $id)
     {
         //
+    }
+
+    /**
+     * Genera el número de documento en formato AA######.
+     * Debe ejecutarse dentro de una transacción para que lockForUpdate() funcione.
+     */
+    protected function generateNumberDocument(): string
+    {
+        $yearPrefix = date('y'); // e.g. '25'
+
+        $maxRow = DB::table('cashreceipts')
+            ->where('numberdocument', 'like', $yearPrefix . '%')
+            ->select(DB::raw('MAX(numberdocument) as max'))
+            ->lockForUpdate()
+            ->first();
+
+        if ($maxRow && $maxRow->max) {
+            $lastSeq = (int) substr($maxRow->max, 2);
+            $nextSeq = $lastSeq + 1;
+        } else {
+            $nextSeq = 1;
+        }
+
+        return $yearPrefix . str_pad($nextSeq, 6, '0', STR_PAD_LEFT);
     }
 }
