@@ -5,13 +5,13 @@ import ClientForm from '../clients/form';
 import { addLocale } from 'primereact/api';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
-import { useForm } from '@inertiajs/react';
 import { Column } from 'primereact/column';
 import { Calendar } from 'primereact/calendar';
 import { InputText } from 'primereact/inputtext';
 import { DataTable } from 'primereact/datatable';
 import { store } from '@/routes/cashreceipts/index';
 import { useEffect, useState, useRef } from 'react';
+import { useForm, usePage } from '@inertiajs/react';
 import { storeClient } from '@/routes/clients/index';
 import { AutoComplete } from 'primereact/autocomplete';
 import {
@@ -304,20 +304,30 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     setServicePriceInput(service?.price != null ? formatCurrency(service.price) : '');
   }, [service?.price, service?.id]);
 
+  const page = usePage();
+
   const handleSaveCashReceipt = () => {
     postFormCashReceipt(store.url(), {
-      onSuccess: (response) => {
-        showMessage('success', 'Éxito', 'Recibo de caja creado correctamente.');
+      onSuccess: () => {
+        const msg = (page.props as any)?.flash?.message ?? 'Recibo de caja creado correctamente.';
+        const success = (page.props as any)?.flash?.success ?? true;
+        showMessage(success ? 'success' : 'error', success ? 'Éxito' : 'Error', msg);
         // Resetear formulario
         resetFormCashReceipt();
         setClient(null);
         setActiveButtonSave(false);
+        
       },
       onError: (errors) => {
-        console.error('Error saving cash receipt:', errors);
-        showMessage('error', 'Error', 'Hubo un error al crear el recibo de caja.');
-      },
-    });  
+        if (errors) {
+          Object.keys(errors).forEach((key) => {
+            setErrorFormCashReceipt(key as keyof CashReceipt, (errors as any)[key]);
+          });
+        }
+        const msg = (page.props as any)?.flash?.message ?? 'Hubo un error al crear el recibo de caja.';
+        showMessage('error', 'Error', msg);
+      }
+    });
   };
 
   return (
