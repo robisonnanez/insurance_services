@@ -66,7 +66,7 @@ interface CashReceiptDetails {
   price: number | null;
 }
 
-export default function Cashreceipts({ companie }: { companie?: Companie | null }) {
+export default function Cashreceipts({ companie, id, duplicate }: { companie?: Companie | null, id?: number | null, duplicate?: boolean }) {
   const [clients, setClients] = useState<Clients[]>([]);
   const [client, setClient] = useState<Clients | null>(null);
   const [filteredClients, setFilteredClients] = useState<Clients[]>([]);
@@ -77,6 +77,8 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
   const [filteredServices, setFilteredServices] = useState<Services[]>([]);
   const [listServices, setListServices] = useState<Services[]>([]);
   const [activeButtonSave, setActiveButtonSave] = useState<boolean>(false);
+
+  // Configurar localización en español para el calendario
 
   addLocale('es', {
     firstDayOfWeek: 1,
@@ -110,6 +112,23 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     fullname: '',
   }));
 
+  // Helpers to format/parse date in America/Bogota timezone (YYYY-MM-DD)
+  const toBogotaYMD = (date: Date | null): string | null => {
+    if (!date) return null;
+    const fmt = new Intl.DateTimeFormat('en', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const parts = fmt.formatToParts(date);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    return `${y}-${m}-${d}`;
+  };
+
+  const ymdToLocalDate = (ymd: string | null): Date | null => {
+    if (!ymd) return null;
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const {
     data: dataFormCashReceipt,
     setData: setDataFormCashReceipt,
@@ -119,9 +138,9 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
     setError: setErrorFormCashReceipt,
     reset: resetFormCashReceipt
   } = useForm<Required<CashReceipt>>({
-    id: null,
+    id: id != null && !duplicate ? id : null,
     client_id: null,
-    date: new Date().toISOString().split('T')[0],
+    date: toBogotaYMD(new Date()) ?? new Date().toISOString().split('T')[0],
     total: null,
     details: [],
   });
@@ -135,10 +154,35 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
 
     getServices().then((data) => {
       if (data == null) return;
-      console.warn(data);
       setListServices(data);
     })
   }, []);
+
+  useEffect(() => {
+    if (id != null) {
+      console.log(id);
+      
+      // Fetch cash receipt data by id and populate form
+      // api.get<CashReceipt>(`/insurance-services/cashreceipts/${id}`)
+      //   .then((response) => {
+      //     const cr = response.data;
+      //     setDataFormCashReceipt({
+      //       id: cr.id || null,
+      //       client_id: cr.client_id || null,
+      //       date: cr.date || null,
+      //       total: cr.total || null,
+      //       details: cr.details || [],
+      //     });
+      //     // Fetch client data
+      //     if (cr.client_id != null) {
+      //       api.get<Clients>(`/insurance-services/clients/${cr.client_id}`)
+      //         .then((res) => {
+      //           setClient(res.data);
+      //         });
+      //     }
+      //   });
+    }
+  }, [id]);
 
   // Fetch clients from API
   const getClients = async () => {
@@ -307,7 +351,7 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
   const page = usePage();
 
   const handleSaveCashReceipt = () => {
-    postFormCashReceipt(store.url(), {
+    postFormCashReceipt(dataFormCashReceipt.id != null ? store.url() : store.url(), {
       onSuccess: () => {
         const msg = (page.props as any)?.flash?.message ?? 'Recibo de caja creado correctamente.';
         const success = (page.props as any)?.flash?.success ?? true;
@@ -357,8 +401,8 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
             <div>
               <p><strong>Fecha:</strong></p>
               <Calendar 
-                value={dataFormCashReceipt.date ? new Date(dataFormCashReceipt.date) : null} 
-                onChange={(e: any) => setDataFormCashReceipt('date',e.value)} 
+                value={dataFormCashReceipt.date ? ymdToLocalDate(dataFormCashReceipt.date) : null} 
+                onChange={(e: any) => setDataFormCashReceipt('date', toBogotaYMD(e.value))} 
                 dateFormat="dd MM yy" 
                 className="w-full"  
                 inputClassName="p-inputtext-sm"
@@ -489,7 +533,7 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
           <div className="mt-10 text-center">
             <p className="font-semibold">La suma de:</p>
             <p className="text-3xl font-bold">${dataFormCashReceipt.total?.toLocaleString('es-CO')}</p>
-          </div>
+          </div>setVisibleCashReceipts
 
           {/* DETALLES */}
           <div className="mt-10 border-t pt-4">
@@ -533,7 +577,7 @@ export default function Cashreceipts({ companie }: { companie?: Companie | null 
           <div className="mt-8 text-center">
             <Button 
               className="px-6 py-2 text-lg"
-              label='Generar Recibo'
+              label={dataFormCashReceipt.id != null ? 'Actualizar Recibo' : 'Generar Recibo'}
               icon={<Save size={16} className='mr-1'/>}
               size="small"
               text

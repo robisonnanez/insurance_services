@@ -11,6 +11,10 @@ Route::middleware('auth')->group(function () {
     Route::prefix('cashreceipts')->group(function () {
       Route::get('/', [CashreceiptsController::class, 'index'])->name('cashreceipts.index');
       Route::post('/store', [CashreceiptsController::class, 'store'])->name('cashreceipts.store');
+      Route::post('/update/{id}', [CashreceiptsController::class, 'update'])->name('cashreceipts.update');
+      Route::get('/show/{id}', [CashreceiptsController::class, 'show'])->name('cashreceipts.show');
+      Route::delete('/destroy/{id}', [CashreceiptsController::class, 'destroy'])->name('cashreceipts.destroy');
+      Route::post('/markAsPaid/{id}', [CashreceiptsController::class, 'markAsPaid'])->name('cashreceipts.markAsPaid');
     });
     Route::prefix('companies')->group(function () {
       Route::get('/all', [CompaniesController::class, 'getAllCompanies'])->name('companies.all');

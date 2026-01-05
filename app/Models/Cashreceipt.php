@@ -36,4 +36,14 @@ class Cashreceipt extends Model
             ])
             ->dontSubmitEmptyLogs();
     }
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class, 'clients_id');
+    }
+
+    public function cashreceiptdetails()
+    {
+        return $this->hasMany(Cashreceiptdetail::class, 'cashreceipts_id');
+    }
 }

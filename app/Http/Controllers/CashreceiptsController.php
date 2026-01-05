@@ -35,8 +35,31 @@ class CashreceiptsController extends Controller
             'companie' => $userAuth->companie
         ];
 
+        $Cashreceipts = Cashreceipt::whereNull('deleted_at')->with('client', 'cashreceiptdetails')->get();
+
+        $dataCashreceipts = [];
+        foreach ($Cashreceipts as $key => $cashreceipt) {
+            $dataCashreceipts[] = [
+                'item'               => $key + 1,
+                'id'                 => $cashreceipt->id,
+                'clients_id'         => $cashreceipt->clients_id,
+                'client_name'        => $cashreceipt->client ? $cashreceipt->client->fullname : null,
+                'client_document'    => $cashreceipt->client ? $cashreceipt->client->document : null,
+                'numberdocument'     => 'RC' . $cashreceipt->numberdocument,
+                'date'               => $cashreceipt->date,
+                'hour'               => $cashreceipt->hour,
+                'datehour'           => $cashreceipt->date . ' ' . $cashreceipt->hour,
+                'total'              => (int) $cashreceipt->total,
+                'paying'             => $cashreceipt->paying,
+                'cashreceiptdetails' => $cashreceipt->cashreceiptdetails,
+            ];
+        }
+
+        $dataCashreceipts = collect($dataCashreceipts)->sortBy('client_name')->values()->all();
+
         return Inertia::render('insurance_services/cashreceipts/index',[
-            'user' => $user
+            'user' => $user,
+            'cashreceipts' => $dataCashreceipts
         ]);
     }
 
@@ -171,5 +194,25 @@ class CashreceiptsController extends Controller
         }
 
         return $yearPrefix . str_pad($nextSeq, 6, '0', STR_PAD_LEFT);
+    }
+
+    public function markAsPaid(Request $request, string $id)
+    {
+        try {
+            $cashreceipt = Cashreceipt::findOrFail($id);
+            $cashreceipt->paying = true;
+            $cashreceipt->save();
+
+            return response()->json(['message' => 'Recibo de caja ' . $cashreceipt->numberdocument . ' marcado como pagado exitosamente.'], 200);
+        } catch (Exception $e) {
+            Log::channel('errores_personalizado')->error('Error al marcar como pagado el recibo de caja: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+
+            return response()->json(['message' => 'Error al marcar como pagado el recibo de caja: ' . $e->getMessage()], 500);
+        }
     }
 }
