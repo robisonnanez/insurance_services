@@ -22,6 +22,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('clients')->group(function () {
       Route::get('/all', [ClientsController::class, 'getAllClients'])->name('clients.all');
       Route::post('/storeClient', [ClientsController::class, 'storeClient'])->name('clients.storeClient');
+      Route::get('/show/{id}', [ClientsController::class, 'show'])->name('clients.show');
     });
     Route::prefix('services')->group(function () {
       Route::get('/all', [ServicesController::class, 'getAllServices'])->name('services.all');
