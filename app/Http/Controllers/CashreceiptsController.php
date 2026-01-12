@@ -42,7 +42,7 @@ class CashreceiptsController extends Controller
             $dataCashreceipts[] = [
                 'item'               => $key + 1,
                 'id'                 => $cashreceipt->id,
-                'clients_id'         => $cashreceipt->clients_id,
+                'client_id'          => $cashreceipt->client_id,
                 'client_name'        => $cashreceipt->client ? $cashreceipt->client->fullname : null,
                 'client_document'    => $cashreceipt->client ? $cashreceipt->client->document : null,
                 'numberdocument'     => 'RC' . $cashreceipt->numberdocument,
@@ -82,7 +82,7 @@ class CashreceiptsController extends Controller
             $numberdocument = $this->generateNumberDocument();
 
             $cashreceipt = Cashreceipt::create([
-                'clients_id'     => $request->client_id,
+                'client_id'      => $request->client_id,
                 'numberdocument' => $numberdocument,
                 'date'           => $request->date,
                 'hour'           => date("H:i:s"),
@@ -99,7 +99,7 @@ class CashreceiptsController extends Controller
 
             foreach ($request->details as $key => $value) {                
                 $details = array(
-                    "cashreceipts_id" => (int) $id,
+                    "cashreceipt_id" => (int) $id,
                     "service_id" => $value['service_id'],
                     "description" => $value['description'],
                     "price" => $value['price'],
@@ -127,7 +127,7 @@ class CashreceiptsController extends Controller
             ]);
 
 
-            if ($e->getCode() === 422) {
+            if ($e->getCode() === 422 || $e->getCode() === 500) {
                 return redirect()->back()
                     ->withErrors(['details' => $e->getMessage()])
                     ->with('message', $e->getMessage())
@@ -145,7 +145,19 @@ class CashreceiptsController extends Controller
      */
     public function show(string $id)
     {
-        //
+        $cashreceipt = Cashreceipt::with('client', 'cashreceiptdetails')->find($id);
+        $cashreceipt->client_id = $cashreceipt->client_id;
+        foreach ($cashreceipt->cashreceiptdetails as $key => $value) {
+            $value->price = (int) $value->price;
+            $value->it = $key + 1;
+            $value->cashreceipt_id = (int) $value->cashreceipt_id;
+            $value->service_id = (int) $value->service_id;
+            $value->id = (int) $value->id;
+            $value->description = $value->name;
+        }
+        $cashreceipt->details = $cashreceipt->cashreceiptdetails;
+        $cashreceipt->total = (int) $cashreceipt->total;
+        return response()->json($cashreceipt);
     }
 
     /**
@@ -161,7 +173,73 @@ class CashreceiptsController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        Db::beginTransaction();
+        try {
+            $cashreceipt = Cashreceipt::findOrFail($id);
+            $cashreceipt->update([
+                'client_id'  => $request->client_id,
+                'date'       => $request->date,
+                'total'      => $request->total,
+            ]);
+            if (!is_array($request->details) || count($request->details) === 0) {
+                throw new Exception('No se proporcionaron detalles válidos para el recibo', 422);
+            }
+            // Crear nuevos detalles
+            foreach ($request->details as $key => $value) {
+                $details = array(
+                    "cashreceipt_id" => (int) $id,
+                    "description" => $value['description'],
+                    "price" => $value['price'],
+                );
+                if (isset($value['id'])) {
+                    // Actualizar detalle existente
+                    $details['id'] = (int) $value['id'];
+                    $details['service_id'] = (int) $value['service_id'];
+                    $cashreceiptdetails = $this->cashreceiptdetails->update(new Request((array)$details), $value['id']);
+                    if ($cashreceiptdetails->getStatusCode() !== 200) {
+                        throw new Exception('Error al actualizar el detalle del recibo de caja en la posición ' . $key, 500);
+                    }
+                } else {
+                    // Crear nuevo detalle
+                    $details['service_id'] = (int) $value['service_id'];
+                    $cashreceiptdetails = $this->cashreceiptdetails->store(new Request((array)$details));
+                    if ($cashreceiptdetails->getStatusCode() !== 201) {
+                        throw new Exception('Error al crear el detalle del recibo de caja en la posición ' . $key, 500);
+                    }
+                }
+            }
+            // Eliminar detalles eliminados
+            foreach ($request->deleted_details as $key => $value) {
+                $cashreceiptdetails = $this->cashreceiptdetails->destroy($value);
+                if ($cashreceiptdetails->getStatusCode() !== 200) {
+                    throw new Exception('Error al eliminar el detalle del recibo de caja en la posición ' . $key, 500);
+                }
+            }
+            Db::commit();
+            return redirect()->route('cashreceipts.index')
+                ->with('message', 'Recibo de caja actualizado exitosamente')
+                ->with('success', true);
+        } catch (Exception $e) {
+            Db::rollBack();
+            Log::channel('errores_personalizado')->error('Error al actualizar el recibo de caja: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+
+            // Si es un error de validación (422), devolverlo como errores para que Inertia lo procese correctamente
+            if ($e->getCode() === 422 || $e->getCode() === 500) {
+                return redirect()->back()
+                    ->withErrors(['details' => $e->getMessage()])
+                    ->with('message', $e->getMessage())
+                    ->with('success', false);
+            }
+
+            return redirect()->back()
+                ->with('message', 'Error al actualizar el recibo de caja: ' . $e->getMessage())
+                ->with('success', false);
+        }
     }
 
     /**

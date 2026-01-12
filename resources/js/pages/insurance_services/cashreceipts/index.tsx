@@ -156,6 +156,7 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
               setCompanie(user.companie);
               setIdCashreceipt(rowData.id);
               setVisibleCashReceipts(true);
+              setIsDuplicate(false);
             }
           })}
           rounded
@@ -231,7 +232,16 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
               className='float-right'
               icon={<File size={16} className='mr-1'/>}
               size='small'
-              onClick={() => setVisibleCashReceipts(!visibleCashReceipts)}
+              onClick={() => {
+                setVisibleCashReceipts(!visibleCashReceipts)
+                setIdCashreceipt(null);
+                setIsDuplicate(false);
+                if (user.companie != null) {
+                  setCompanie(user.companie);
+                } else {
+                  setCompanie(null);
+                }
+              }}
               text
               raised
             />

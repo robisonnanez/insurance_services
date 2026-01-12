@@ -13,10 +13,10 @@ return new class extends Migration
     {
         Schema::create('cashreceiptdetails', function (Blueprint $table) {
             $table->integer('id')->autoIncrement()->comment('Llave principal');
-            $table->integer('cashreceipts_id')->comment('Llave foranea de la tabla cashreceipts');
-            $table->foreign('cashreceipts_id')->references('id')->on('cashreceipts');
-            $table->integer('services_id')->comment('Llave foreanea de la tabla services');
-            $table->foreign('services_id')->references('id')->on('services');
+            $table->integer('cashreceipt_id')->comment('Llave foranea de la tabla cashreceipts');
+            $table->foreign('cashreceipt_id')->references('id')->on('cashreceipts');
+            $table->integer('service_id')->comment('Llave foreanea de la tabla services');
+            $table->foreign('service_id')->references('id')->on('services');
             $table->string('name', 100)->comment('Nombre del servicio');
             $table->decimal('price', 16, 2)->comment('Precio del servicio');
             $table->timestamps();

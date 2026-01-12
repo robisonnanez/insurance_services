@@ -16,7 +16,7 @@ class Cashreceipt extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'clients_id',
+        'client_id',
         'numberdocument',
         'date',
         'hour',
@@ -39,11 +39,11 @@ class Cashreceipt extends Model
 
     public function client()
     {
-        return $this->belongsTo(Client::class, 'clients_id');
+        return $this->belongsTo(Client::class, 'client_id');
     }
 
     public function cashreceiptdetails()
     {
-        return $this->hasMany(Cashreceiptdetail::class, 'cashreceipts_id');
+        return $this->hasMany(Cashreceiptdetail::class, 'cashreceipt_id');
     }
 }

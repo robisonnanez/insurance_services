@@ -66,6 +66,9 @@ class ServicesController extends Controller
     public function getAllServices()
     {
         $services = Service::all();
+        foreach ($services as $service) {
+            $service->name_id = $service->id.' - '.$service->name;
+        }
         return response()->json($services);
     }
 }

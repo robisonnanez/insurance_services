@@ -34,23 +34,23 @@ class CashreceiptdetailsController extends Controller
         DB::beginTransaction();
         try {
             $cashreceiptdetail = Cashreceiptdetail::create([
-                'cashreceipts_id' => $request->cashreceipts_id,
-                'services_id'     => $request->service_id,
-                'name'            => $request->description,
-                'price'           => $request->price
+                'cashreceipt_id' => $request->cashreceipt_id,
+                'service_id'     => $request->service_id,
+                'name'           => $request->description,
+                'price'          => $request->price
             ]);
 
             DB::commit();
-            return response()->json(['message' => 'Cash receipt detail created successfully', 'data' => $cashreceiptdetail, 'success' => true], 201);
+            return response()->json(['message' => 'Detalle del recibo de caja creado exitosamente.', 'data' => $cashreceiptdetail, 'success' => true], 201);
         } catch (Exception $e) {
             DB::rollBack();
-            Log::channel('errores_personalizado')->error('Error creating cash receipt detail: ' . $e->getMessage(), [
+            Log::channel('errores_personalizado')->error('Error al crear el detalle del recibo de efectivo: ' . $e->getMessage(), [
                 'exception' => $e,
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
                 'code' => $e->getCode(),
             ]);
-            return response()->json(['message' => 'Failed to create cash receipt detail', 'success' => false], 500);
+            return response()->json(['message' => 'No se pudo crear el detalle del recibo de efectivo.', 'success' => false], 500);
         }
     }
 
@@ -75,7 +75,28 @@ class CashreceiptdetailsController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        DB::beginTransaction();
+        try {
+            $cashreceiptdetail = Cashreceiptdetail::findOrFail($id);
+            $cashreceiptdetail->update([
+                'cashreceipt_id' => $request->cashreceipt_id,
+                'service_id'     => $request->service_id,
+                'name'           => $request->description,
+                'price'          => $request->price
+            ]);
+
+            DB::commit();
+            return response()->json(['message' => 'Detalle del recibo de efectivo actualizado exitosamente.', 'data' => $cashreceiptdetail, 'success' => true], 200);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::channel('errores_personalizado')->error('Error al actualizar el detalle del recibo de efectivo: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+            return response()->json(['message' => 'No se pudo actualizar el detalle del recibo de efectivo.', 'success' => false], 500);
+        }
     }
 
     /**
@@ -83,6 +104,22 @@ class CashreceiptdetailsController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        DB::beginTransaction();
+        try {
+            $cashreceiptdetail = Cashreceiptdetail::findOrFail($id);
+            $cashreceiptdetail->delete();
+
+            DB::commit();
+            return response()->json(['message' => 'Detalle del recibo de efectivo eliminado exitosamente.', 'success' => true], 200);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::channel('errores_personalizado')->error('Error al eliminar el detalle del recibo de efectivo: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+            return response()->json(['message' => 'No se pudo eliminar el detalle del recibo de efectivo.', 'success' => false], 500);
+        }
     }
 }

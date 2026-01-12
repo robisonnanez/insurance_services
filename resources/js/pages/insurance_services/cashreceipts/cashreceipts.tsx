@@ -9,14 +9,15 @@ import { Column } from 'primereact/column';
 import { Calendar } from 'primereact/calendar';
 import { InputText } from 'primereact/inputtext';
 import { DataTable } from 'primereact/datatable';
-import { store } from '@/routes/cashreceipts/index';
 import { useEffect, useState, useRef } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { storeClient } from '@/routes/clients/index';
 import { AutoComplete } from 'primereact/autocomplete';
+import { store, show, update } from '@/routes/cashreceipts/index';
+import { storeClient, all, show as showClient } from '@/routes/clients/index';
 import {
   ListPlus, Save,
-  UserRoundPlus
+  UserRoundPlus, Trash,
+  SquarePen
 } from 'lucide-react';
 
 interface Companie {
@@ -45,17 +46,21 @@ interface Clients {
 
 interface Services {
   id?: number | null;
+  it?: number | null;
   name?: string | null;
   description?: string | null;
   price?: number | null;
+  name_id?: string | null;
 }
 
 interface CashReceipt {
   id?: number | null;
   client_id: number | null;
+  client?: Clients | null;
   date: string | null;
   total: number | null;
   details?: CashReceiptDetails[];
+  deleted_details?: number[];
 }
 
 interface CashReceiptDetails {
@@ -77,6 +82,8 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
   const [filteredServices, setFilteredServices] = useState<Services[]>([]);
   const [listServices, setListServices] = useState<Services[]>([]);
   const [activeButtonSave, setActiveButtonSave] = useState<boolean>(false);
+  const [editingIt, setEditingIt] = useState<number | null>(null);
+  const [editingDetailId, setEditingDetailId] = useState<number | null>(null);
 
   // Configurar localización en español para el calendario
 
@@ -140,9 +147,11 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
   } = useForm<Required<CashReceipt>>({
     id: id != null && !duplicate ? id : null,
     client_id: null,
+    client: null,
     date: toBogotaYMD(new Date()) ?? new Date().toISOString().split('T')[0],
     total: null,
     details: [],
+    deleted_details: [],
   });
 
   // Initial data fetch
@@ -160,27 +169,37 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
 
   useEffect(() => {
     if (id != null) {
-      console.log(id);
-      
       // Fetch cash receipt data by id and populate form
-      // api.get<CashReceipt>(`/insurance-services/cashreceipts/${id}`)
-      //   .then((response) => {
-      //     const cr = response.data;
-      //     setDataFormCashReceipt({
-      //       id: cr.id || null,
-      //       client_id: cr.client_id || null,
-      //       date: cr.date || null,
-      //       total: cr.total || null,
-      //       details: cr.details || [],
-      //     });
-      //     // Fetch client data
-      //     if (cr.client_id != null) {
-      //       api.get<Clients>(`/insurance-services/clients/${cr.client_id}`)
-      //         .then((res) => {
-      //           setClient(res.data);
-      //         });
-      //     }
-      //   });
+      api.get<CashReceipt>(show.url(id))
+        .then((response) => {
+          const cr = response.data;
+          
+          setDataFormCashReceipt({
+            id: duplicate ? null : cr.id, 
+            client_id: cr.client_id || null,
+            date: cr.date || null,
+            total: cr.total || null,
+            details: cr.details || [],
+          });
+          setClient({ 
+            id: cr.client_id || null, 
+            names: cr.client?.names || '', 
+            surnames: cr.client?.surnames || '', 
+            document: cr.client?.document || '', 
+            dv: cr.client?.dv || '', 
+            fullname: cr.client?.fullname || `${cr.client?.names} ${cr.client?.surnames}` || '',
+            address: cr.client?.address || '',
+            phone: cr.client?.phone || '',
+            cellphone: cr.client?.cellphone || '',
+            email: cr.client?.email || '', 
+          });          
+        })
+        .catch((error) => {
+          console.error('Error fetching cash receipt:', error);
+        })
+        .finally(() => {
+          setActiveButtonSave(true);
+        });
     }
   }, [id]);
 
@@ -279,19 +298,49 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
 
   const agregarServicio = () => {
     if (!service) return;
-    const newDetails: CashReceiptDetails = {
-      it: (dataFormCashReceipt.details ? dataFormCashReceipt.details.length + 1 : 1),
-      service_id: service.id || null,
-      description: service.name || null,
-      price: service.price || 0,
-    };
-    const updatedDetails = [...(dataFormCashReceipt.details || []), newDetails];
+
+    const currentDetails = dataFormCashReceipt.details || [];
+    // calcular nextIt como max(it existentes, editingIt) + 1
+    const existingIts = currentDetails.map(d => d.it || 0);
+    const maxExistingIt = existingIts.length ? Math.max(...existingIts) : 0;
+    const maxItIncludingEditing = Math.max(maxExistingIt, editingIt ?? 0);
+    const nextIt = maxItIncludingEditing + 1;
+
+    let updatedDetails: CashReceiptDetails[] = [];
+
+    if (editingIt != null) {
+      // Reinsertar el detalle editado con el mismo it y, si existía, con su id original
+      const newDetail: CashReceiptDetails = {
+        id: editingDetailId ?? null,
+        it: editingIt,
+        service_id: service.id || null,
+        description: service.name || null,
+        price: service.price || 0,
+      };
+      updatedDetails = [...currentDetails, newDetail];
+    } else {
+      // Agregar nuevo detalle con nextIt
+      const newDetails: CashReceiptDetails = {
+        it: nextIt,
+        service_id: service.id || null,
+        description: service.name || null,
+        price: service.price || 0,
+      };
+      updatedDetails = [...currentDetails, newDetails];
+    }
+
+    // Ordenar por it para mostrar en orden lógico
+    updatedDetails.sort((a, b) => (a.it || 0) - (b.it || 0));
+
     const newTotal = updatedDetails.reduce((sum, item) => sum + (item.price || 0), 0);
     setDataFormCashReceipt('details', updatedDetails);
     setDataFormCashReceipt('total', newTotal);
     setActiveButtonSave(true);
     setService(null);
+    setServicePriceInput('');
     setFilteredServices([]);
+    setEditingIt(null);
+    setEditingDetailId(null);
   };
 
   const buscarServicios = (e: any) => {
@@ -351,27 +400,116 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
   const page = usePage();
 
   const handleSaveCashReceipt = () => {
-    postFormCashReceipt(dataFormCashReceipt.id != null ? store.url() : store.url(), {
-      onSuccess: () => {
-        const msg = (page.props as any)?.flash?.message ?? 'Recibo de caja creado correctamente.';
-        const success = (page.props as any)?.flash?.success ?? true;
-        showMessage(success ? 'success' : 'error', success ? 'Éxito' : 'Error', msg);
-        // Resetear formulario
-        resetFormCashReceipt();
-        setClient(null);
-        setActiveButtonSave(false);
-        
+    postFormCashReceipt(dataFormCashReceipt.id != null ? update.url(dataFormCashReceipt.id) : store.url(), {
+      onSuccess: (returnedPage?: any) => {
+        console.warn('onSuccess payload', returnedPage, 'current flash:', (page.props as any)?.flash);
+        // Intentar leer el mensaje desde el payload que devuelve Inertia (si existe)
+        let msg = 'Recibo de caja creado correctamente.';
+        let successFlag = true;
+
+        if (returnedPage) {
+          // Inertia visita completa: el objeto puede contener props o message
+          if (returnedPage.props?.flash?.message) {
+            msg = returnedPage.props.flash.message;
+            successFlag = returnedPage.props.flash.success ?? true;
+          } else if (returnedPage.props?.message) {
+            msg = returnedPage.props.message;
+            successFlag = returnedPage.props.success ?? true;
+          } else if (returnedPage.message) {
+            // en caso de respuesta JSON directa
+            msg = returnedPage.message;
+            successFlag = returnedPage.success ?? true;
+          }
+        } else {
+          // Fallback: revisar props compartidos actuales (middleware)
+          const pageFlash = (page.props as any)?.flash;
+          if (pageFlash?.message) {
+            msg = pageFlash.message;
+            successFlag = pageFlash.success ?? true;
+          }
+        }
+
+        showMessage(successFlag ? 'success' : 'error', successFlag ? 'Éxito' : 'Error', msg);
+        // Resetear formulario solo si fue éxito
+        if (successFlag) {
+          resetFormCashReceipt();
+          setClient(null);
+          setActiveButtonSave(false);
+        }
       },
       onError: (errors) => {
-        if (errors) {
+        // Mostrar errores de validación si existen
+        if (errors && Object.keys(errors).length > 0) {
           Object.keys(errors).forEach((key) => {
-            setErrorFormCashReceipt(key as keyof CashReceipt, (errors as any)[key]);
+            const val = (errors as any)[key];
+            setErrorFormCashReceipt(key as keyof CashReceipt, val);
           });
+          // Priorizar mensaje en 'details' o unir todos
+          const detailMsg = (errors as any).details || (errors as any).message || Object.values(errors).flat().join(' ');
+          showMessage('error', 'Error', detailMsg || 'Hubo un error en los datos enviados.');
+          return;
         }
+        // Fallback: usar flash.message si está disponible
         const msg = (page.props as any)?.flash?.message ?? 'Hubo un error al crear el recibo de caja.';
         showMessage('error', 'Error', msg);
       }
     });
+  };
+
+  const accionBodyTemplate = (rowData: any) => {
+    return (
+      <div className="flex flex-wrap gap-2">        
+        <Button 
+          icon={<SquarePen size={16} />}
+          className="p-button-warning"
+          size="small"
+          tooltip='Editar'
+          tooltipOptions={{position: 'top'}}
+          onClick={() => {
+            // Poblar buscadores para editar este detalle y eliminar temporalmente la fila
+            const removed = (dataFormCashReceipt.details || []).filter((d: CashReceiptDetails) => d.it !== rowData.it);
+            const newTotalAfterRemove = removed.reduce((sum, item) => sum + (item.price || 0), 0);
+            setDataFormCashReceipt('details', removed);
+            setDataFormCashReceipt('total', newTotalAfterRemove);
+
+            setService({
+              id: rowData.service_id ?? rowData.service_id ?? null,
+              it: rowData.it ?? null,
+              name: (rowData.description ?? '').toUpperCase(),
+              price: rowData.price ?? null,
+              name_id: `${rowData.service_id ?? rowData.service_id} - ${(rowData.description ?? '').toUpperCase()}`,
+            });
+            setServicePriceInput(formatCurrency(rowData.price ?? 0));
+            setEditingIt(rowData.it ?? null);            setEditingDetailId(rowData.id ?? null);            setActiveButtonSave(true);
+          }}
+          rounded
+          text
+          raised
+        />
+        <Button 
+          icon={<Trash size={16} />}
+          className="p-button-danger"
+          size="small"
+          tooltip='Eliminar'
+          tooltipOptions={{position: 'top'}}
+          onClick={() => {
+            const updatedDetails = (dataFormCashReceipt.details || []).filter(d => d.it !== rowData.it);
+            const newTotal = updatedDetails.reduce((sum, item) => sum + (item.price || 0), 0);
+            // Si el detalle tiene id, agregar a deleted_details
+            if (rowData.id) {
+              const updatedDeleted = [...(dataFormCashReceipt.deleted_details || []), rowData.id];
+              setDataFormCashReceipt('deleted_details', updatedDeleted);
+            }
+            setDataFormCashReceipt('details', updatedDetails);
+            setDataFormCashReceipt('total', newTotal);
+            setActiveButtonSave(true);
+          }}
+          rounded
+          text
+          raised
+        />
+      </div>
+    );
   };
 
   return (
@@ -469,14 +607,29 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
           <div className="mt-6">
             <label className="font-semibold text-sm mt-4 block">Agregar Servicio:</label>
             <div className="grid grid-cols-12 gap-2 items-end mt-2">
+              <InputText type="hidden" value={service?.it != null ? `${service.it}` : null} />
+              <InputText type="hidden" value={service?.id != null ? `${service.id}` : null} />
+              <InputText type="hidden" value={editingDetailId != null ? `${editingDetailId}` : null} />
+              
               <div className='col-span-12 sm:col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-3 2xl:col-span-3'>
                 <AutoComplete
-                  value={service}
+                  value={service?.name_id ?? ''}
                   suggestions={filteredServices}
                   completeMethod={buscarServicios}
-                  field="id"
-                  onChange={(e) => setService(e.value)}
-                  onSelect={(e) => setService(e.value)}
+                  field="name_id"
+                  onChange={(e) => {
+                    const val = e.value || '';
+                    if (typeof val === 'string') {
+                      const upper = String(val).toUpperCase();
+                      setService(prev => ({ ...(prev ?? { id: null, it: null, name: '' }), name: upper, name_id: prev?.id ? `${prev.id} - ${upper}` : upper }));
+                    } else if (val && typeof val === 'object') {
+                      setService({ ...val, name: String(val.name ?? '').toUpperCase(), name_id: `${val.id} - ${String(val.name ?? '').toUpperCase()}` });
+                    }
+                  }}
+                  onSelect={(e) => {
+                    const val = e.value;
+                    setService({ ...val, name: String(val.name ?? '').toUpperCase(), name_id: `${val.id} - ${String(val.name ?? '').toUpperCase()}` });
+                  }}
                   className="w-full"
                   inputClassName='w-full p-inputtext-sm'
                   placeholder="Escriba para buscar servicio..."
@@ -485,7 +638,11 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
               <div className='col-span-12 sm:col-span-12 md:col-span-5 lg:col-span-5 xl:col-span-5 2xl:col-span-5'>
                 <InputText
                   value={service?.name || ''}
-                  onChange={(e) => setService({ ...service, name: e.target.value })}
+                  onChange={(e) => {
+                    const upper = (e.target.value || '').toUpperCase();
+                    setService(prev => ({ ...(prev ?? { id: null, it: null, name: '' }), name: upper, name_id: prev?.id ? `${prev.id} - ${upper}` : upper }));
+                  }}
+                  onBlur={(e) => { /* kept for parity */ }}
                   placeholder="Nombre del servicio"
                   className="w-full p-inputtext-sm"
                 />
@@ -522,7 +679,7 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
                   size="small"
                   text
                   raised
-                  label='Agregar'
+                  label={editingIt != null ? 'Actualizar' : 'Agregar'}
                   className='float-right'
                 />
               </div>
@@ -533,7 +690,7 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
           <div className="mt-10 text-center">
             <p className="font-semibold">La suma de:</p>
             <p className="text-3xl font-bold">${dataFormCashReceipt.total?.toLocaleString('es-CO')}</p>
-          </div>setVisibleCashReceipts
+          </div>
 
           {/* DETALLES */}
           <div className="mt-10 border-t pt-4">
@@ -554,6 +711,11 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
                     ${rowData.price?.toLocaleString('es-CO')}
                   </div>
                 )}
+              />
+              <Column
+                header="Acciones"
+                body={accionBodyTemplate}
+                style={{ textAlign: 'center', width: '8rem' }}
               />
             </DataTable>
             {/* Totales */}

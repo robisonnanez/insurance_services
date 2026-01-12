@@ -16,8 +16,8 @@ class Cashreceiptdetail extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'cashreceipts_id',
-        'services_id',
+        'cashreceipt_id',
+        'service_id',
         'name',
         'price'
     ];
