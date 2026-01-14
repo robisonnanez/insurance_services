@@ -1,6 +1,7 @@
 <?php
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ClientsController;
 use App\Http\Controllers\ServicesController;
 use App\Http\Controllers\CompaniesController;
@@ -26,6 +27,9 @@ Route::middleware('auth')->group(function () {
     });
     Route::prefix('services')->group(function () {
       Route::get('/all', [ServicesController::class, 'getAllServices'])->name('services.all');
+    });
+    Route::prefix('reports')->group(function () {
+      Route::get('/generateCashreceipts/{cashreceipt_id}', [ReportsController::class, 'generateCashreceipts'])->name('reports.generateCashreceipts');
     });
   });
 });

@@ -9,10 +9,10 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Dropdown } from 'primereact/dropdown';
 import { Head, usePage } from '@inertiajs/react';
-import { SpeedDial } from 'primereact/speeddial';
 import { DataTable } from 'primereact/datatable';
 import { useState, useEffect, useRef } from 'react';
-import { InputNumber } from 'primereact/inputnumber';
+import { SplitButton } from 'primereact/splitbutton';
+import { generateCashreceipts } from '@/routes/reports/index';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { index, markAsPaid, destroy } from '@/routes/cashreceipts/index';
 import {
@@ -95,10 +95,6 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
     return `${value.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}`;
   };
 
-  // const balanceFilterTemplate = (options: any) => {
-  //   return <InputNumber value={options.value} onChange={(e: any) => options.filterCallback(e.value, options.index)} mode="currency" currency="COP" locale="es-CO" />;
-  // };
-
   const payingBodyTemplate = (rowData: any) => {
     return <Message severity={rowData.paying ? 'success' : 'error'} text={rowData.paying ? 'Pago' : 'No Pago'} />
   };
@@ -106,109 +102,165 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
   const accionBodyTemplate = (rowData: any) => {
     return (
       <div className="flex flex-wrap gap-2">
-        <Button 
-          icon={<DollarSign size={16} />}
-          className="p-button-success"
-          size="small"
-          tooltip='Pagar'
-          tooltipOptions={{position: 'top'}}
-          onClick={() => confirmDialog({
-            message: '¿Está seguro que desea marcar este recibo como pagado?',
-            header: `Confirmar Pago del Recibo ${rowData.numberdocument}`,
-            icon: <Info size={16} />,
-            acceptLabel: 'Sí',
-            rejectLabel: 'No',
-            acceptClassName: 'p-button-success',
-            accept: () => {
-              api.post(markAsPaid(rowData.id).url)
-                .then((response) => {
-                  showMessage('success', 'Éxito', response.data.message);
-                })
-                .catch((error) => {
-                  console.error('Error marking as paid:', error);
-                })
-                .finally(() => {
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 1500);
-                });
+        <SplitButton 
+          icon={<SquareMenu size={16} />}
+          className='p-button-info'
+          size='small'
+          model={[
+            {
+              template: () => {
+                return (
+                  <Button 
+                    icon={<DollarSign size={16} className='mr-2'/>}
+                    className="p-button-success w-full flex justify-start"
+                    size="small"
+                    tooltip='Pagar'
+                    tooltipOptions={{position: 'top'}}
+                    label='Pagar'
+                    onClick={() => confirmDialog({
+                      message: '¿Está seguro que desea marcar este recibo como pagado?',
+                      header: `Confirmar Pago del Recibo ${rowData.numberdocument}`,
+                      icon: <Info size={16} />,
+                      acceptLabel: 'Sí',
+                      rejectLabel: 'No',
+                      acceptClassName: 'p-button-success',
+                      accept: () => {
+                        api.post(markAsPaid(rowData.id).url)
+                          .then((response) => {
+                            showMessage('success', 'Éxito', response.data.message);
+                          })
+                          .catch((error) => {
+                            console.error('Error marking as paid:', error);
+                          })
+                          .finally(() => {
+                            // Abrir en una nueva pestaña usando la URL generada
+                            window.open(generateCashreceipts.url({ cashreceipt_id: rowData.id }), '_blank');
+                            setTimeout(() => {
+                              window.location.reload();
+                            }, 1500);
+                          });
+                      }
+                    })}
+                    disabled={rowData.paying ? true : false}
+                    text
+                    raised
+                  />
+                );
+              }
+            },
+            {
+              template: () => {
+                return (
+                  <Button
+                    icon='pi pi-file-pdf'
+                    className='p-button-help w-full flex justify-start'
+                    size='small'
+                    tooltip='PDF'
+                    tooltipOptions={{position: 'top'}}
+                    label='PDF'
+                    onClick={() => {
+                      // Abrir en una nueva pestaña usando la URL generada
+                      window.open(generateCashreceipts.url({ cashreceipt_id: rowData.id }), '_blank');
+                    }}
+                    disabled={!rowData.paying ? true : false}
+                    text
+                    raised
+                  />
+                );
+              }
+            },
+            {
+              template: () => {
+                return (
+                  <Button
+                    icon={<SquarePen size={16} className='mr-2' />}
+                    className="p-button-warning w-full flex justify-start"
+                    size="small"
+                    tooltip='Editar'
+                    tooltipOptions={{position: 'top'}}
+                    label='Editar'
+                    onClick={() => confirmDialog({
+                      message: '¿Está seguro que desea editar este recibo?',
+                      header: `Editar el Recibo ${rowData.numberdocument}`,
+                      icon: <Info size={16} />,
+                      acceptLabel: 'Sí',
+                      rejectLabel: 'No',
+                      acceptClassName: 'p-button-warning',
+                      accept: () => {
+                        setCompanie(user.companie);
+                        setIdCashreceipt(rowData.id);
+                        setVisibleCashReceipts(true);
+                        setIsDuplicate(false);
+                      }
+                    })}
+                    text
+                    raised
+                    disabled={rowData.paying ? true : false}
+                  />
+                );
+              }
+            },
+            {
+              template: () => {
+                return (
+                  <Button
+                    icon={<Files size={16} className='mr-2' />}
+                    className="p-button-secondary w-full flex justify-start"
+                    size="small"
+                    tooltip='Duplicar'
+                    tooltipOptions={{position: 'top'}}
+                    label='Duplicar'
+                    onClick={() => confirmDialog({
+                      message: '¿Está seguro que desea duplicar este recibo?',
+                      header: `Duplicar el Recibo ${rowData.numberdocument}`,
+                      icon: <Info size={16} />,
+                      acceptLabel: 'Sí',
+                      rejectLabel: 'No',
+                      acceptClassName: 'p-button-secondary',
+                      accept: () => {
+                        setCompanie(user.companie);
+                        setIdCashreceipt(rowData.id);
+                        setVisibleCashReceipts(true);
+                        setIsDuplicate(true);
+                      }
+                    })}
+                    text
+                    raised
+                  />
+                );
+              }
+            },
+            {
+              template: () => {
+                return (
+                  <Button
+                    icon={<Trash size={16} className='mr-2' />}
+                    className="p-button-danger w-full flex justify-start"
+                    size="small"
+                    tooltip='Eliminar'
+                    tooltipOptions={{position: 'top'}}
+                    label='Eliminar'
+                    onClick={() => confirmDialog({
+                      message: '¿Está seguro que desea eliminar este recibo?',
+                      header: `Eliminar el Recibo ${rowData.numberdocument}`,
+                      icon: <Info size={16} />,
+                      acceptLabel: 'Sí',
+                      rejectLabel: 'No',
+                      acceptClassName: 'p-button-danger',
+                      accept: () => {
+                        // Lógica para eliminar el recibo
+                      }
+                    })}
+                    text
+                    raised
+                    disabled={rowData.paying ? true : false}
+                  />
+                );
+              }
             }
-          })}
-          disabled={rowData.paying ? true : false}
-          rounded
+          ]}
+          raised 
           text
-          raised
-        />
-        <Button
-          icon={<SquarePen size={16} />}
-          className="p-button-warning"
-          size="small"
-          tooltip='Editar'
-          tooltipOptions={{position: 'top'}}
-          onClick={() => confirmDialog({
-            message: '¿Está seguro que desea editar este recibo?',
-            header: `Editar el Recibo ${rowData.numberdocument}`,
-            icon: <Info size={16} />,
-            acceptLabel: 'Sí',
-            rejectLabel: 'No',
-            acceptClassName: 'p-button-warning',
-            accept: () => {
-              setCompanie(user.companie);
-              setIdCashreceipt(rowData.id);
-              setVisibleCashReceipts(true);
-              setIsDuplicate(false);
-            }
-          })}
-          rounded
-          text
-          raised
-          disabled={rowData.paying ? true : false}
-        />
-        <Button
-          icon={<Files size={16} />}
-          className="p-button-secondary"
-          size="small"
-          tooltip='Duplicar'
-          tooltipOptions={{position: 'top'}}
-          onClick={() => confirmDialog({
-            message: '¿Está seguro que desea duplicar este recibo?',
-            header: `Duplicar el Recibo ${rowData.numberdocument}`,
-            icon: <Info size={16} />,
-            acceptLabel: 'Sí',
-            rejectLabel: 'No',
-            acceptClassName: 'p-button-secondary',
-            accept: () => {
-              setCompanie(user.companie);
-              setIdCashreceipt(rowData.id);
-              setVisibleCashReceipts(true);
-              setIsDuplicate(true);
-            }
-          })}
-          rounded
-          text
-          raised
-        />
-        <Button
-          icon={<Trash size={16} />}
-          className="p-button-danger"
-          size="small"
-          tooltip='Eliminar'
-          tooltipOptions={{position: 'top'}}
-          onClick={() => confirmDialog({
-            message: '¿Está seguro que desea eliminar este recibo?',
-            header: `Eliminar el Recibo ${rowData.numberdocument}`,
-            icon: <Info size={16} />,
-            acceptLabel: 'Sí',
-            rejectLabel: 'No',
-            acceptClassName: 'p-button-danger',
-            accept: () => {
-              // Lógica para eliminar el recibo
-            }
-          })}
-          rounded
-          text
-          raised
-          disabled={rowData.paying ? true : false}
         />
       </div>
     );
