@@ -8,10 +8,10 @@ import { Message } from 'primereact/message';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Dropdown } from 'primereact/dropdown';
-import { Head, usePage } from '@inertiajs/react';
 import { DataTable } from 'primereact/datatable';
 import { useState, useEffect, useRef } from 'react';
 import { SplitButton } from 'primereact/splitbutton';
+import { Head, usePage, router } from '@inertiajs/react';
 import { generateCashreceipts } from '@/routes/reports/index';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { index, markAsPaid, destroy } from '@/routes/cashreceipts/index';
@@ -46,7 +46,7 @@ interface Companie {
   email: string;
   document: string;
   dv: number
-}
+};
 
 export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cashreceipts: any[]}) {
   const [visibleCashReceipts, setVisibleCashReceipts] = useState<boolean>(false);
@@ -55,6 +55,7 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
   const [idCashreceipt, setIdCashreceipt] = useState<number | null>(null);
   const [isDuplicate, setIsDuplicate] = useState<boolean>(false);
   const toastMessage = useRef<Toast | null>(null);
+  const page = usePage();
 
   useEffect(() => {
     if (allCompanies == null && user.companie == null) {
@@ -248,7 +249,59 @@ export default function CashreceiptsIndex({user, cashreceipts}: {user: User, cas
                       rejectLabel: 'No',
                       acceptClassName: 'p-button-danger',
                       accept: () => {
-                        // Lógica para eliminar el recibo
+                        router.delete(destroy(rowData.id).url, {
+                          onSuccess: (returnedPage?: any) => {
+                          // Intentar leer el mensaje desde el payload que devuelve Inertia (si existe)
+                          let msg = 'Recibo de caja eliminado correctamente.';
+                          let successFlag = true;
+
+                          if (returnedPage) {
+                            // Inertia visita completa: el objeto puede contener props o message
+                            if (returnedPage.props?.flash?.message) {
+                              msg = returnedPage.props.flash.message;
+                              successFlag = returnedPage.props.flash.success ?? true;
+                            } else if (returnedPage.props?.message) {
+                              msg = returnedPage.props.message;
+                              successFlag = returnedPage.props.success ?? true;
+                            } else if (returnedPage.message) {
+                              // en caso de respuesta JSON directa
+                              msg = returnedPage.message;
+                              successFlag = returnedPage.success ?? true;
+                            }
+                          } else {
+                            // Fallback: revisar props compartidos actuales (middleware)
+                            const pageFlash = (page.props as any)?.flash;
+                            if (pageFlash?.message) {
+                              msg = pageFlash.message;
+                              successFlag = pageFlash.success ?? true;
+                            }
+                          }
+
+                          showMessage(successFlag ? 'success' : 'error', successFlag ? 'Éxito' : 'Error', msg);
+                        },
+                          onError: (errors) => {
+                            // Mostrar errores de validación si existen
+                            if (errors && Object.keys(errors).length > 0) {
+                              Object.keys(errors).forEach((key) => {
+                                const val = (errors as any)[key];
+                                console.error(`Error ${key}: ${val}`);
+                              });
+                              // Priorizar mensaje en 'details' o unir todos
+                              const detailMsg = (errors as any).details || (errors as any).message || Object.values(errors).flat().join(' ');
+                              showMessage('error', 'Error', detailMsg || 'Hubo un error en los datos enviados.');
+                              return;
+                            }
+                            // Fallback: usar flash.message si está disponible
+                            const msg = (page.props as any)?.flash?.message ?? 'Hubo un error al crear el recibo de caja.';
+                            showMessage('error', 'Error', msg);
+                            showMessage('error', 'Error', 'No se pudo eliminar el recibo.');
+                          },
+                          onFinish: () => {
+                            // setTimeout(() => {
+                            //   window.location.reload();
+                            // }, 1500);
+                          }
+                        });
                       }
                     })}
                     text

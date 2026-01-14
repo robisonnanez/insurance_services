@@ -247,7 +247,42 @@ class CashreceiptsController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        DB::beginTransaction();
+        try {
+            $cashreceipt = Cashreceipt::findOrFail($id);
+            foreach ($cashreceipt->cashreceiptdetails as $detail) {
+                $cashreceiptdetails = $this->cashreceiptdetails->destroy($detail->id);
+                if ($cashreceiptdetails->getStatusCode() !== 200) {
+                    throw new Exception('Error al eliminar el detalle del recibo de caja con ID ' . $detail->id, 500);
+                }
+            }
+            $cashreceipt->delete();
+
+            DB::commit();
+            return redirect()->route('cashreceipts.index')
+                ->with('message', 'Recibo de caja eliminado exitosamente')
+                ->with('success', true);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::channel('errores_personalizado')->error('Error al eliminar el recibo de caja: ' . $e->getMessage(), [
+                'exception' => $e,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'code' => $e->getCode(),
+            ]);
+
+            // Si es un error de validación (422), devolverlo como errores para que Inertia lo procese correctamente
+            if ($e->getCode() === 422 || $e->getCode() === 500) {
+                return redirect()->back()
+                    ->withErrors(['details' => $e->getMessage()])
+                    ->with('message', $e->getMessage())
+                    ->with('success', false);
+            }
+
+            return redirect()->back()
+                ->with('message', 'Error al eliminar el recibo de caja: ' . $e->getMessage())
+                ->with('success', false);
+        }
     }
 
     /**
