@@ -402,7 +402,6 @@ export default function Cashreceipts({ companie, id, duplicate }: { companie?: C
   const handleSaveCashReceipt = () => {
     postFormCashReceipt(dataFormCashReceipt.id != null ? update.url(dataFormCashReceipt.id) : store.url(), {
       onSuccess: (returnedPage?: any) => {
-        console.warn('onSuccess payload', returnedPage, 'current flash:', (page.props as any)?.flash);
         // Intentar leer el mensaje desde el payload que devuelve Inertia (si existe)
         let msg = 'Recibo de caja creado correctamente.';
         let successFlag = true;
